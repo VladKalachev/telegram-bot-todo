@@ -1,6 +1,7 @@
 import { AppService } from './app.service';
 import {
   Action,
+  Ctx,
   Hears,
   InjectBot,
   Message,
@@ -12,6 +13,7 @@ import { Telegraf } from 'telegraf';
 import { actionButtons } from './app.buttons';
 import { DELETE_TASK, DONE_TASK, EDIT_TASK, LIST_TASK } from './app.constants';
 import { Context } from './context.interface';
+import { showTodos } from './app.utils';
 
 const todos = [
   {
@@ -36,7 +38,14 @@ export class AppUpdate {
   constructor(
     @InjectBot() private readonly bot: Telegraf<Context>,
     private readonly appService: AppService,
-  ) {}
+  ) {
+    this.bot.telegram.setMyCommands([
+      {
+        command: 'start',
+        description: 'Start Telegram',
+      },
+    ]);
+  }
 
   @Start()
   async startCommand(ctx: Context) {
@@ -46,49 +55,71 @@ export class AppUpdate {
 
   @Hears(LIST_TASK)
   async listTask(ctx: Context) {
-    await ctx.replyWithHTML(
-      `Ваш список задач:\n\n${todos.map((todo) => (todo.isCompleted ? '✅' : '⬜') + ' ' + todo.title + '\n\n').join('')}
-      `,
-    );
+    await ctx.replyWithHTML(showTodos(todos));
   }
 
   @Hears(DONE_TASK)
   async doneTask(ctx: Context) {
-    await ctx.reply('Напишите ID задачи');
     ctx.session.type = 'done';
-  }
-
-  @On('text')
-  async getMessage(@Message() message: string, ctx: Context) {
-    if (ctx.session.type) return;
+    await ctx.deleteMessage();
+    await ctx.reply('Напишите ID задачи');
   }
 
   @Hears(EDIT_TASK)
   async editTask(ctx: Context) {
+    ctx.session.type = 'edit';
+    await ctx.deleteMessage();
     await ctx.replyWithHTML(
-      `${todos.map((todo) => (todo.isCompleted ? '✅' : '⬜') + ' ' + todo.title + '\n\n').join('')}`,
+      'Напишите ID и новое название задачи: \n\n' +
+        'В формате - <b>1 | Новое задание </b>',
     );
   }
 
   @Hears(DELETE_TASK)
   async deleteTask(ctx: Context) {
-    await ctx.replyWithHTML(
-      `${todos.map((todo) => (todo.isCompleted ? '✅' : '⬜') + ' ' + todo.title + '\n\n').join('')}`,
-    );
+    ctx.session.type = 'remove';
+    await ctx.deleteMessage();
+    await ctx.reply('Напишите ID задачи');
   }
 
-  // @Action('list')
-  // async getAll(ctx: Context) {
-  //   await ctx.reply(`LIST`);
-  // }
+  @On('text')
+  async getMessage(@Message('text') message: string, @Ctx() ctx: Context) {
+    if (!ctx.session.type) return;
 
-  @Action('edit')
-  async editCommand(ctx: Context) {
-    await ctx.reply(`edit`);
-  }
+    if (ctx.session.type === 'done') {
+      const todo = todos.find((todo) => todo.id === Number(message));
+      if (!todo) {
+        await ctx.deleteMessage();
+        await ctx.reply('Задача с таким ID не найдена');
+        return;
+      }
+      todo.isCompleted = !todo.isCompleted;
+      await ctx.replyWithHTML(showTodos(todos));
+    }
 
-  @Action('delete')
-  async deleteCommand(ctx: Context) {
-    await ctx.reply(`delete`);
+    if (ctx.session.type === 'edit') {
+      const [taskId, taskName] = message.split(' | ');
+      const todo = todos.find((todo) => todo.id === Number(taskId));
+      if (!todo) {
+        await ctx.deleteMessage();
+        await ctx.reply('Задача с таким ID не найдена');
+        return;
+      }
+      todo.title = taskName;
+      await ctx.replyWithHTML(showTodos(todos));
+    }
+
+    if (ctx.session.type === 'remove') {
+      const todo = todos.find((todo) => todo.id === Number(message));
+      if (!todo) {
+        await ctx.deleteMessage();
+        await ctx.reply('Задача с таким ID не найдена');
+        return;
+      }
+
+      await ctx.replyWithHTML(
+        showTodos(todos.filter((todo) => todo.id !== Number(message))),
+      );
+    }
   }
 }

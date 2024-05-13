@@ -1,6 +1,5 @@
 import { AppService } from './app.service';
 import {
-  Action,
   Ctx,
   Hears,
   InjectBot,
@@ -11,27 +10,15 @@ import {
 } from 'nestjs-telegraf';
 import { Telegraf } from 'telegraf';
 import { actionButtons } from './app.buttons';
-import { DELETE_TASK, DONE_TASK, EDIT_TASK, LIST_TASK } from './app.constants';
+import {
+  CREATE_TASK,
+  DELETE_TASK,
+  DONE_TASK,
+  EDIT_TASK,
+  LIST_TASK,
+} from './app.constants';
 import { Context } from './context.interface';
 import { showTodos } from './app.utils';
-
-const todos = [
-  {
-    id: 1,
-    title: 'Задача 1',
-    isCompleted: false,
-  },
-  {
-    id: 2,
-    title: 'Задача 2',
-    isCompleted: false,
-  },
-  {
-    id: 3,
-    title: 'Задача 3',
-    isCompleted: true,
-  },
-];
 
 @Update()
 export class AppUpdate {
@@ -55,7 +42,19 @@ export class AppUpdate {
 
   @Hears(LIST_TASK)
   async listTask(ctx: Context) {
+    const todos = await this.appService.getAll();
+    if (!todos.length) {
+      await ctx.reply('Список задач пустой');
+      return;
+    }
     await ctx.replyWithHTML(showTodos(todos));
+  }
+
+  @Hears(CREATE_TASK)
+  async createTask(ctx: Context) {
+    ctx.session.type = 'create';
+    await ctx.deleteMessage();
+    await ctx.reply('Опиши задачу');
   }
 
   @Hears(DONE_TASK)
@@ -87,39 +86,42 @@ export class AppUpdate {
     if (!ctx.session.type) return;
 
     if (ctx.session.type === 'done') {
-      const todo = todos.find((todo) => todo.id === Number(message));
-      if (!todo) {
+      const todos = await this.appService.doneTask(Number(message));
+      if (!todos) {
         await ctx.deleteMessage();
         await ctx.reply('Задача с таким ID не найдена');
         return;
       }
-      todo.isCompleted = !todo.isCompleted;
       await ctx.replyWithHTML(showTodos(todos));
     }
 
     if (ctx.session.type === 'edit') {
       const [taskId, taskName] = message.split(' | ');
-      const todo = todos.find((todo) => todo.id === Number(taskId));
-      if (!todo) {
+      const todos = await this.appService.editTask(Number(taskId), taskName);
+
+      if (!todos) {
         await ctx.deleteMessage();
         await ctx.reply('Задача с таким ID не найдена');
         return;
       }
-      todo.title = taskName;
+
       await ctx.replyWithHTML(showTodos(todos));
     }
 
     if (ctx.session.type === 'remove') {
-      const todo = todos.find((todo) => todo.id === Number(message));
-      if (!todo) {
+      const todos = await this.appService.deleteTask(Number(message));
+      if (!todos) {
         await ctx.deleteMessage();
         await ctx.reply('Задача с таким ID не найдена');
         return;
       }
 
-      await ctx.replyWithHTML(
-        showTodos(todos.filter((todo) => todo.id !== Number(message))),
-      );
+      await ctx.replyWithHTML(showTodos(todos));
+    }
+
+    if (ctx.session.type === 'create') {
+      const todos = await this.appService.createTask(message);
+      await ctx.replyWithHTML(showTodos(todos));
     }
   }
 }

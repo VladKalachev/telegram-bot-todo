@@ -18,6 +18,12 @@ export class AppService {
     return this.taskRepository.findOneBy({ id });
   }
 
+  async createTask(title: string) {
+    const task = await this.taskRepository.create({ title });
+    await this.taskRepository.save(task);
+    return this.getAll();
+  }
+
   async doneTask(id: number) {
     const task = await this.getById(id);
     if (!task) {
@@ -25,7 +31,8 @@ export class AppService {
     }
 
     task.isCompleted = !task.isCompleted;
-    return this.taskRepository.save(task);
+    await this.taskRepository.save(task);
+    return this.getAll();
   }
 
   async editTask(id: number, title: string) {
@@ -35,7 +42,8 @@ export class AppService {
     }
 
     task.title = title;
-    return this.taskRepository.save(task);
+    await this.taskRepository.save(task);
+    return this.getAll();
   }
 
   async deleteTask(id: number) {
@@ -44,6 +52,7 @@ export class AppService {
       return null;
     }
 
-    return this.taskRepository.delete({ id });
+    await this.taskRepository.delete({ id });
+    return this.getAll();
   }
 }
